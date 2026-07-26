@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="300" viewBox="0 0 240 300">
+  <!-- Placeholder headshot for the sample CV (a generic silhouette, not a real
+       person). Replace data/photo.svg — or point `photo:` at your own .jpg/.png. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e9eef5"/>
+      <stop offset="1" stop-color="#d5dde8"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="300" fill="url(#bg)"/>
+  <g fill="#9fb0c4">
+    <circle cx="120" cy="112" r="52"/>
+    <path d="M120 176c-56 0-96 34-96 82v42h192v-42c0-48-40-82-96-82z"/>
+  </g>
+</svg>

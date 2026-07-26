@@ -1,0 +1,19 @@
+services:
+  cvrenderer:
+    build:
+      context: .
+      args:
+        TYPST_VERSION: "0.12.0"
+    image: cvrenderer:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Your CV data. Each ./data/<name>.yaml is served at
+      # GET /cv/<template>/<name>.pdf (e.g. ./data/cv-example.yaml ->
+      # /cv/helsinki/cv-example.pdf). Typst reads under ROOT=/app, so the
+      # directory must be mounted at /app/data.
+      - ./data:/app/data:ro
+    environment:
+      PORT: "8080"
+      RENDER_TIMEOUT: "30s"

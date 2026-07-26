@@ -1,0 +1,230 @@
+# Example CV. This file is served at GET /cv/<template>/cv-example.pdf (its name
+# without the .yaml), e.g. /cv/helsinki/cv-example.pdf or
+# /cv/primeats/cv-example.pdf. Copy it to data/<your-name>.yaml to add another
+# CV at /cv/<template>/<your-name>.pdf. Edit and re-request to re-render.
+#
+# All data below is fictional and exists only to demonstrate every section of
+# every template. `helsinki` is two-column (main + dark sidebar: details, links,
+# skills, languages, hobbies); `primeats` is single-column/ATS-friendly and
+# folds the same fields into inline rows. Only `name` is required — omit any
+# section and it simply disappears.
+
+name: John Smith
+title: Principal Platform Engineer
+photo: /data/photo.svg   # optional; root-absolute path (under ROOT). Omit for an initials avatar (helsinki) / no photo (primeats).
+
+# Global date of birth — drives {{age}} and the sidebar "Date / Place of birth".
+birth_date: 02.11.1988
+birth_place: Bristol, United Kingdom
+
+# Computed values referenced in any text as {{name}}. Auto-provided:
+#   {{age}}              — from birth_date above
+#   {{experience_years}} — summed from the experience entries below (work only;
+#                          overlapping jobs count once, gaps are excluded)
+# Custom values (any of these three forms):
+vars:
+  cloud_years: { since_year: 2016 }        # -> current year - 2016
+  oss_since: "2015"                        # literal
+  mentee_count: "20+"                      # literal
+
+# --- sidebar: Details ---
+details:
+  location: London, United Kingdom
+  phone: "+44 7700 900142"
+  email: john.smith@example.org
+  nationality: British
+  driving_license: Full UK (Category B)
+
+# --- sidebar: Links ---
+links:
+  - label: johnsmith.example.dev
+    url: https://johnsmith.example.dev
+  - label: LinkedIn
+    url: https://www.linkedin.com/in/example-john-smith
+  - label: GitHub
+    url: https://github.com/example-john
+  - label: Mastodon
+    url: https://fosstodon.example/@john
+  - label: StackOverflow
+    url: https://stackoverflow.com/users/0000000/example-john
+
+# --- sidebar: Skills (level 1-10, drawn as a rating bar) ---
+skills:
+  - { name: Go, level: 10 }
+  - { name: Kubernetes / Operators, level: 9 }
+  - { name: Terraform & Pulumi, level: 9 }
+  - { name: Distributed systems, level: 9 }
+  - { name: Rust, level: 7 }
+  - { name: Observability (OTel), level: 8 }
+  - { name: PostgreSQL, level: 8 }
+  - { name: CI/CD & release engineering, level: 9 }
+  - { name: Threat modelling, level: 6 }
+
+# --- sidebar: Languages (level is a free-text proficiency label) ---
+languages:
+  - { name: English, level: "Native" }
+  - { name: Spanish, level: "B2" }
+  - { name: French, level: "A2" }
+
+# --- sidebar: Hobbies ---
+hobbies: Hill walking, analogue photography, sourdough baking, chess (rapid), restoring mechanical keyboards.
+
+# --- main: Professional Summary ---
+summary: >
+  Principal Platform Engineer, {{age}}, with {{experience_years}} years building
+  developer platforms and multi-tenant infrastructure for logistics and health-tech
+  companies — {{cloud_years}} of those on public cloud. Designs paved-road tooling
+  that teams actually adopt: Kubernetes operators, self-service environments, and
+  release pipelines measured in minutes rather than days. Open-source maintainer
+  since {{oss_since}} and mentor to {{mentee_count}} engineers.
+
+# --- main: Technical skills & keywords ---
+technical_skills:
+  - category: Languages
+    items: [Go, Rust, Python, TypeScript, SQL, Bash]
+  - category: Orchestration
+    items: [Kubernetes, Helm, Argo CD, Crossplane, Nomad]
+  - category: Infrastructure as code
+    items: [Terraform, Pulumi, Ansible, Packer]
+  - category: Data & messaging
+    items: [PostgreSQL, ClickHouse, Redis, NATS, Apache Kafka]
+  - category: Observability
+    items: [OpenTelemetry, Prometheus, Grafana, Loki, Tempo]
+  - category: Cloud
+    items: [AWS, GCP, Hetzner, Cloudflare]
+
+# --- main: Employment History ---
+experience:
+  - position: Principal Platform Engineer
+    company: Northwind Logistics
+    location: London, United Kingdom
+    start: Mar 2021
+    end: Present
+    # Free-form Markdown: paragraphs, **bold**, *italic*, `code`, and nested
+    # bullet lists all render.
+    description: |
+      Technical lead for the internal developer platform serving **9 product teams**
+      and roughly 220 services across three regions.
+
+      - Designed the platform's *paved road*: a golden-path service template plus a
+        `platformctl` CLI that scaffolds, deploys and rolls back a service in one
+        command.
+      - Cut median lead time from commit to production from **6 days to 40 minutes**
+        by replacing hand-rolled Jenkins jobs with GitOps delivery on Argo CD.
+      - Wrote two Kubernetes operators in Go that reconcile tenant namespaces,
+        quotas and database provisioning:
+        - Reduced environment setup from a two-week ticket queue to a self-service
+          pull request.
+        - Backed by a `Tenant` CRD with admission webhooks enforcing cost and
+          isolation policy.
+      - Introduced OpenTelemetry tracing across the estate and defined the first
+        organisation-wide SLOs; error budgets now drive release decisions.
+      - Chairs the architecture review forum and mentors senior engineers through
+        the principal-track promotion process.
+
+  - position: Freelance Infrastructure Consultant
+    company: Self-employed
+    location: Remote
+    start: Jan 2019
+    end: Dec 2020
+    # Note: this engagement overlaps the role below on purpose — {{experience_years}}
+    # merges overlapping intervals, so concurrent work is never double-counted.
+    description: |
+      Part-time advisory work for two seed-stage startups alongside a full-time role.
+
+      - Migrated a monolithic Django deployment to containerised workloads on a
+        managed Kubernetes cluster with zero-downtime cutover.
+      - Built cost-attribution dashboards that surfaced a **41%** overspend on idle
+        staging environments.
+      - Ran hands-on workshops on Terraform module design and secret management.
+
+  - position: Senior Site Reliability Engineer
+    company: Helios Health Systems
+    location: Manchester, United Kingdom
+    start: Aug 2017
+    end: Mar 2021
+    description: |
+      Reliability ownership for an NHS-facing patient-scheduling platform under
+      strict availability and data-residency constraints.
+
+      - Led the incident-response practice: blameless postmortems, on-call rotation
+        redesign, and a runbook library that cut mean time to recovery by half.
+      - Sharded the primary PostgreSQL cluster and introduced logical replication,
+        absorbing a *3x* growth in appointment volume without downtime.
+      - Automated disaster-recovery drills; restored a full region from backups in
+        under 25 minutes during a quarterly game day.
+
+  - position: Backend Engineer
+    company: Kestrel Analytics
+    location: Bristol, United Kingdom
+    start: Sep 2014
+    end: Aug 2017
+    description: |
+      Early engineer on a real-time telemetry product for industrial fleets.
+
+      - Built the ingestion pipeline handling ~80k events per second on Kafka and
+        Go consumers.
+      - Implemented the query API and its `ClickHouse` storage layer, replacing a
+        nightly batch process with sub-second aggregates.
+      - Introduced the team's first automated test suite and CI pipeline.
+
+# --- main: Projects & Open-source ---
+projects:
+  - name: driftwatch
+    tech: Go, Kubernetes
+    description: Operator that detects and reports configuration drift between Git and live cluster state.
+    url: https://github.com/example-john/driftwatch
+  - name: otel-lite
+    tech: Rust
+    description: Minimal OpenTelemetry exporter for embedded and resource-constrained targets.
+    url: https://github.com/example-john/otel-lite
+  - name: tfmodules
+    tech: Terraform
+    description: Opinionated module collection for small-team cloud footprints; used by ~40 public repositories.
+    url: https://github.com/example-john/tfmodules
+
+# --- main: Education ---
+education:
+  - degree: MSc, Distributed Systems
+    institution: University of Edinburgh
+    location: Edinburgh, United Kingdom
+    start: 2012
+    end: 2014
+    description: |
+      Thesis on consensus latency in geo-replicated key-value stores. Teaching
+      assistant for the operating systems course.
+  - degree: BEng, Computer Science
+    institution: University of Bristol
+    location: Bristol, United Kingdom
+    start: 2009
+    end: 2012
+    description: First-class honours; chair of the student computing society.
+
+# --- main: Certifications ---
+certifications:
+  - name: Certified Kubernetes Administrator (CKA)
+    issuer: Cloud Native Computing Foundation
+    date: 2024
+    url: https://example.org/verify/cka/0000-0000
+  - name: HashiCorp Certified — Terraform Associate
+    issuer: HashiCorp
+    date: 2023
+    url: https://example.org/verify/terraform/0000-0000
+  - name: AWS Certified Solutions Architect – Professional
+    issuer: Amazon Web Services
+    date: 2022
+  - name: Certified Kubernetes Security Specialist (CKS)
+    issuer: Cloud Native Computing Foundation
+    date: 2021
+
+# --- main: Key Achievements ---
+# Each item is either a plain string or a { title, description } pair.
+key_achievements:
+  - title: Platform adoption at 100%
+    description: All 9 product teams migrated to the paved road within three quarters, with no mandate from leadership.
+  - title: £620k annual cloud saving
+    description: Right-sized workloads and introduced spot capacity for batch pipelines, cutting compute spend 38%.
+  - title: Conference speaker
+    description: "\"Operators are not magic\" — KubeCon EU 2024; \"SLOs for small teams\" — SREcon EMEA 2022."
+  - Maintains three open-source projects with a combined 4.2k stars and 60+ outside contributors.
+  - Reduced production incidents by 60% through structured logging, tracing, and a redesigned on-call rotation.
