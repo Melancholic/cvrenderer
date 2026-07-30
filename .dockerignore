@@ -5,3 +5,4 @@ bin/
 *.md
 Makefile
 docker-compose.yml
+.github/

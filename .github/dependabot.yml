@@ -1,0 +1,21 @@
+version: 2
+
+# Actions are pinned to commit SHAs: a mutable tag like @v3 can be repointed by
+# whoever owns that repo, and the publish job can write to the registry.
+# Pinning without updates just means never getting security patches, so
+# dependabot bumps the SHAs and the comment beside them.
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly

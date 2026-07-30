@@ -1,0 +1,65 @@
+name: Publish
+
+# Runs on merge to main and publishes the image to GHCR. That is the whole
+# pipeline: nothing is deployed anywhere.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Don't let two merges push :latest concurrently, and don't cancel a push
+# that is already uploading layers.
+concurrency:
+  group: publish-main
+  cancel-in-progress: false
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compute image tag
+        id: tag
+        run: echo "tag=sha-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+
+      - name: Build and push
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # GHCR requires a lowercase path; the repo owner is not.
+          image="ghcr.io/$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')"
+          # The source label links the package to this repository, which is
+          # what lets a workflow's GITHUB_TOKEN read it while it stays private.
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${REPO}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -t "${image}:${TAG}" \
+            -t "${image}:latest" \
+            .
+          docker push "${image}:${TAG}"
+          docker push "${image}:latest"
+
+          {
+            echo "### Published"
+            echo
+            echo '```'
+            echo "${image}:${TAG}"
+            echo "${image}:latest"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

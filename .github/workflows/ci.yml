@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+
+# One run per branch. Opening a PR supersedes the run from the branch push,
+# so the same commit isn't tested twice.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # The render tests self-skip when typst is absent (exec.LookPath), so
+      # without this the suite is green while covering nothing -- including
+      # TestRenderTemplateSelection, which compiles every shipped template.
+      # The version is read out of the Dockerfile so CI and the image can't
+      # drift apart.
+      - name: Install typst
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^ARG TYPST_VERSION=//p' Dockerfile)
+          [ -n "$version" ] || { echo "could not read TYPST_VERSION from Dockerfile" >&2; exit 1; }
+          curl -fsSL "https://github.com/typst/typst/releases/download/v${version}/typst-x86_64-unknown-linux-musl.tar.xz" -o /tmp/typst.tar.xz
+          tar -xf /tmp/typst.tar.xz -C /tmp
+          sudo install -m0755 /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
+          typst --version
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      # Renders with an empty HOME so typst's user package cache is cold: if
+      # the vendored @preview/cmarker tree or --package-cache-path is wrong,
+      # this fails instead of silently falling back to a cached copy.
+      - name: Verify vendored typst packages resolve from a cold cache
+        run: |
+          set -euo pipefail
+          HOME=$(mktemp -d) typst compile \
+            --root . \
+            --font-path fonts \
+            --package-cache-path typst-packages \
+            templates/helsinki.typ /tmp/ci-cold-cache.pdf \
+            --input data=/data/cv-example.yaml
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build image
+        run: docker build -t cvrenderer:ci .
+
+      # End-to-end check against the artifact that actually ships: the image
+      # has no host fonts, no typst package cache and no network at render
+      # time, so this catches anything the local test suite can't.
+      - name: Smoke test image
+        run: |
+          set -euo pipefail
+          docker run -d --name cvrenderer-ci -p 18080:8080 cvrenderer:ci
+          trap 'docker logs cvrenderer-ci || true; docker rm -f cvrenderer-ci >/dev/null 2>&1 || true' EXIT
+
+          for _ in $(seq 30); do
+            if curl -fsS http://127.0.0.1:18080/healthz >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/healthz >/dev/null
+
+          for template in helsinki primeats; do
+            curl -fsS -o "/tmp/${template}.pdf" \
+              "http://127.0.0.1:18080/cv/${template}/cv-example.pdf"
+            head -c 4 "/tmp/${template}.pdf" | grep -q '%PDF' \
+              || { echo "${template}: response is not a PDF" >&2; exit 1; }
+          done

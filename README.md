@@ -188,6 +188,32 @@ Locally (needs `typst` on PATH):
 make run
 ```
 
+## CI/CD
+
+CI runs on every branch push and PR (`.github/workflows/ci.yml`): vet, tests
+with `typst` installed, a cold-cache render that proves the vendored Typst
+packages resolve offline, plus an image build and a container smoke test that
+fetches a PDF from both templates.
+
+Merging to `main` runs `.github/workflows/publish.yml`, which publishes to the
+GitHub Container Registry:
+
+```
+ghcr.io/melancholic/cvrenderer:sha-<short>   # immutable, one per merge
+ghcr.io/melancholic/cvrenderer:latest
+```
+
+The package is private, and both workflows run on the built-in `GITHUB_TOKEN`
+— there are no secrets to configure. Pulling it elsewhere needs a token with
+`read:packages`:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <username> --password-stdin
+docker pull ghcr.io/melancholic/cvrenderer:latest
+```
+
+**Deployment is not automated** — the pipeline stops at the registry.
+
 ## Configuration (environment variables)
 
 | Variable         | Default            | Description                                        |
