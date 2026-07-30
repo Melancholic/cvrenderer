@@ -69,6 +69,16 @@ HTTP handler ──▶ typst.Renderer ──▶ `typst compile` ──▶ applic
 
 - **Render tests skip when `typst` is missing** (`exec.LookPath`), so `go test` is green in bare environments but only meaningfully covers rendering where typst exists. `TestRenderTemplateSelection` compiles *every* shipped template against `data/cv-example.yaml`, so a template that only breaks on some field fails the suite rather than a request — keep it in step with `templates/*.typ`.
 
+## CI/CD
+
+Two workflows, and **the pipeline stops at the registry** — nothing is deployed anywhere yet. `ci.yml` runs on every non-`main` push and on PRs; `publish.yml` runs on merge to `main` and pushes `ghcr.io/melancholic/cvrenderer:sha-<short>` + `:latest` to GHCR (private package). No secrets are configured: both workflows run on the built-in `GITHUB_TOKEN`.
+
+- **CI must install typst or it tests nothing.** The render tests skip on `exec.LookPath` failure, so a runner without typst produces a green suite that never compiled a template. `ci.yml` installs it, reading the version out of the `ARG TYPST_VERSION` line in the Dockerfile so CI and the image can't drift. There's also a cold-cache render step (`HOME=$(mktemp -d)`) that fails if the vendored `@preview/cmarker` tree or `--package-cache-path` is wrong — a warm user cache would otherwise mask it.
+
+- **Actions are pinned to full commit SHAs**, with dependabot bumping them (a tag like `@v3` can be repointed by whoever owns that repo). The repo is public, so **`pull_request_target` must never be added to a workflow holding secrets** — that trigger runs with secrets in the base-repo context and would hand them to any PR author. Fork PRs get no secrets under the current `pull_request` trigger.
+
+- **The `org.opencontainers.image.source` label is load-bearing**, not decoration: it links the package to the repository, which is what lets a workflow's `GITHUB_TOKEN` read the image while the package stays private.
+
 ## Conventions
 
 - `internal/typst` is the seam for the renderer; keep subprocess handling there rather than calling `exec` from handlers. It has no HTTP knowledge.
