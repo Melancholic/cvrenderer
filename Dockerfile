@@ -9,7 +9,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/cvrenderer ./cmd/server
 
 # --- fetch the typst binary ----------------------------------------------
-FROM alpine:3.20 AS typst
+FROM alpine:3.24 AS typst
 ARG TYPST_VERSION=0.12.0
 RUN apk add --no-cache curl xz \
  && curl -sSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" -o /tmp/typst.tar.xz \
@@ -17,7 +17,7 @@ RUN apk add --no-cache curl xz \
  && install -m 0755 /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
 
 # --- runtime -------------------------------------------------------------
-FROM alpine:3.20
+FROM alpine:3.24
 RUN adduser -D -u 10001 app \
  && mkdir -p /app/templates /app/data \
  && chown -R app:app /app
