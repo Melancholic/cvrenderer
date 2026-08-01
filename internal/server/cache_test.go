@@ -59,18 +59,21 @@ func TestCacheKeyIdentity(t *testing.T) {
 	mod := time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)
 	tmpl := resolved{path: "templates/helsinki.typ", size: 100, mod: mod}
 	data := resolved{path: "/data/cv.yaml", size: 200, mod: mod}
-	base := cacheKey(tmpl, data, "2026-07-28")
+	photo := resolved{path: "/data/cv-photo.png", size: 300, mod: mod}
+	base := cacheKey(tmpl, data, photo, "2026-07-28")
 
-	if got := cacheKey(tmpl, data, "2026-07-28"); got != base {
+	if got := cacheKey(tmpl, data, photo, "2026-07-28"); got != base {
 		t.Error("identical inputs produced different keys")
 	}
 	cases := map[string]string{
-		"different day":       cacheKey(tmpl, data, "2026-07-29"),
-		"edited data file":    cacheKey(tmpl, resolved{path: data.path, size: 201, mod: mod}, "2026-07-28"),
-		"touched data file":   cacheKey(tmpl, resolved{path: data.path, size: 200, mod: mod.Add(time.Second)}, "2026-07-28"),
-		"edited template":     cacheKey(resolved{path: tmpl.path, size: 101, mod: mod}, data, "2026-07-28"),
-		"different template":  cacheKey(resolved{path: "templates/primeats.typ", size: 100, mod: mod}, data, "2026-07-28"),
-		"different data file": cacheKey(tmpl, resolved{path: "/data/other.yaml", size: 200, mod: mod}, "2026-07-28"),
+		"different day":       cacheKey(tmpl, data, photo, "2026-07-29"),
+		"edited data file":    cacheKey(tmpl, resolved{path: data.path, size: 201, mod: mod}, photo, "2026-07-28"),
+		"touched data file":   cacheKey(tmpl, resolved{path: data.path, size: 200, mod: mod.Add(time.Second)}, photo, "2026-07-28"),
+		"edited template":     cacheKey(resolved{path: tmpl.path, size: 101, mod: mod}, data, photo, "2026-07-28"),
+		"different template":  cacheKey(resolved{path: "templates/primeats.typ", size: 100, mod: mod}, data, photo, "2026-07-28"),
+		"different data file": cacheKey(tmpl, resolved{path: "/data/other.yaml", size: 200, mod: mod}, photo, "2026-07-28"),
+		"replaced photo":      cacheKey(tmpl, data, resolved{path: photo.path, size: 301, mod: mod}, "2026-07-28"),
+		"deleted photo":       cacheKey(tmpl, data, resolved{}, "2026-07-28"),
 	}
 	for name, got := range cases {
 		if got == base {

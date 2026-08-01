@@ -8,6 +8,14 @@
 // Safe optional field access.
 #let field(d, k, default: none) = if type(d) == dictionary and k in d { d.at(k) } else { default }
 
+// The photo comes from the server (data/<cv>-photo.<ext>), not the YAML;
+// `--input photo=` is empty when there is none, and templates then skip their
+// image section — typst hard-errors on a missing image() path.
+#let photo = {
+  let p = sys.inputs.at("photo", default: "")
+  if p == "" { none } else { p }
+}
+
 // ---- computed variables ---------------------------------------------------
 // A `vars:` map in the YAML lets you reference values in any text via {{name}}.
 // Each var is either a literal, `{ since_year: N }` → (current year − N), or

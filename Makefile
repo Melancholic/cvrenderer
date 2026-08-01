@@ -23,7 +23,7 @@ fmt: ## gofmt the tree
 	gofmt -w .
 
 render: ## Render data/cv-example.yaml to bin/cv.pdf using typst directly
-	$(TYPST) compile --root $(ROOT) --font-path fonts --package-cache-path typst-packages templates/helsinki.typ bin/cv.pdf --input data=/data/cv-example.yaml
+	$(TYPST) compile --root $(ROOT) --font-path fonts --package-cache-path typst-packages templates/helsinki.typ bin/cv.pdf --input data=/data/cv-example.yaml --input photo=/data/cv-example-photo.svg
 
 docker: ## Build the docker image
 	docker build -t cvrenderer:latest .

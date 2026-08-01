@@ -49,7 +49,9 @@ func (s *Server) serveCV(w http.ResponseWriter, r *http.Request, name string) {
 		return
 	}
 
-	key := cacheKey(tmpl, data, s.now().Format("2006-01-02"))
+	photo := s.resolvePhoto(name)
+
+	key := cacheKey(tmpl, data, photo, s.now().Format("2006-01-02"))
 	etag := etagFor(key)
 	attach := downloadRequested(r)
 
@@ -75,7 +77,7 @@ func (s *Server) serveCV(w http.ResponseWriter, r *http.Request, name string) {
 	}
 	defer release()
 
-	pdf, err := s.renderer.Render(r.Context(), tmpl.path, data.path)
+	pdf, err := s.renderer.Render(r.Context(), tmpl.path, data.path, photo.path)
 	if err != nil {
 		// typst's stderr quotes template source and absolute paths: log only.
 		log.Printf("render %s with %s: %v", data.path, tmpl.path, err)
@@ -139,6 +141,11 @@ type resolved struct {
 // Tried in order, so a name present as both resolves to .yaml.
 var dataExts = []string{".yaml", ".yml"}
 
+// data/<cv>-photo.<ext>, tried in order.
+const photoSuffix = "-photo"
+
+var photoExts = []string{".png", ".jpg", ".jpeg", ".svg"}
+
 // Returns the root-absolute path typst expects, e.g. "/data/cv-example.yaml".
 // The chosen extension lands in resolved.path, hence in the cache key, so
 // renaming cv.yml -> cv.yaml invalidates rather than replaying stale bytes.
@@ -155,6 +162,23 @@ func (s *Server) resolveCV(name string) (r resolved, status int, msg string) {
 		return resolved{path: path, size: info.Size(), mod: info.ModTime()}, 0, ""
 	}
 	return resolved{}, http.StatusNotFound, "unknown CV: " + name
+}
+
+// Resolved here rather than in the template because typst treats a missing
+// image() as a hard error: no file means no photo, not a failed render.
+func (s *Server) resolvePhoto(name string) resolved {
+	if !slug.MatchString(name) {
+		return resolved{}
+	}
+	for _, ext := range photoExts {
+		info, err := os.Stat(filepath.Join(s.cfg.Root, s.cfg.DataDir, name+photoSuffix+ext))
+		if err != nil {
+			continue
+		}
+		path := "/" + s.cfg.DataDir + "/" + name + photoSuffix + ext
+		return resolved{path: path, size: info.Size(), mod: info.ModTime()}
+	}
+	return resolved{}
 }
 
 func (s *Server) resolveTemplate(name string) (r resolved, status int, msg string) {

@@ -11,7 +11,8 @@
 
 name: John Smith
 title: Principal Platform Engineer
-photo: /data/photo.svg   # optional; root-absolute path (under ROOT). Omit for an initials avatar (helsinki) / no photo (primeats).
+# The photo is not a field: it is data/<this file's name>-photo.<png|jpg|jpeg|svg>
+# (here cv-example-photo.svg). Without one: initials avatar / no photo.
 
 # Global date of birth — drives {{age}} and the sidebar "Date / Place of birth".
 birth_date: 02.11.1988

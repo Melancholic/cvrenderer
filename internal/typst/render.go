@@ -23,9 +23,10 @@ type Renderer struct {
 	Timeout         time.Duration
 }
 
-// Note the asymmetry: templatePath is relative to Root, dataPath is
-// root-absolute ("/data/cv-example.yaml").
-func (r *Renderer) Render(ctx context.Context, templatePath, dataPath string) ([]byte, error) {
+// Note the asymmetry: templatePath is relative to Root, dataPath and photoPath
+// are root-absolute ("/data/cv-example.yaml"). An empty photoPath means the CV
+// has no photo; the caller checks, since typst hard-errors on a missing image().
+func (r *Renderer) Render(ctx context.Context, templatePath, dataPath, photoPath string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()
 
@@ -36,6 +37,7 @@ func (r *Renderer) Render(ctx context.Context, templatePath, dataPath string) ([
 		"-", // write PDF to stdout
 		"--format", "pdf",
 		"--input", "data=" + dataPath,
+		"--input", "photo=" + photoPath,
 	}
 	if r.FontDir != "" {
 		args = append(args, "--font-path", r.FontDir)

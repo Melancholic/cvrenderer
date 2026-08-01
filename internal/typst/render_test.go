@@ -54,7 +54,7 @@ const helsinki = "templates/helsinki.typ"
 
 func TestRenderDefaultData(t *testing.T) {
 	r := newRenderer(t)
-	pdf, err := r.Render(context.Background(), helsinki, "/data/cv-example.yaml")
+	pdf, err := r.Render(context.Background(), helsinki, "/data/cv-example.yaml", "/data/cv-example-photo.svg")
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -72,7 +72,23 @@ func TestRenderTemplateSelection(t *testing.T) {
 	r := newRenderer(t)
 	for _, tmpl := range []string{"templates/helsinki.typ", "templates/primeats.typ"} {
 		t.Run(filepath.Base(tmpl), func(t *testing.T) {
-			pdf, err := r.Render(context.Background(), tmpl, "/data/cv-example.yaml")
+			pdf, err := r.Render(context.Background(), tmpl, "/data/cv-example.yaml", "/data/cv-example-photo.svg")
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			if !bytes.HasPrefix(pdf, []byte("%PDF-")) {
+				t.Fatalf("output is not a PDF")
+			}
+		})
+	}
+}
+
+// Every template must compile with an empty photo input rather than erroring.
+func TestRenderWithoutPhoto(t *testing.T) {
+	r := newRenderer(t)
+	for _, tmpl := range []string{"templates/helsinki.typ", "templates/primeats.typ"} {
+		t.Run(filepath.Base(tmpl), func(t *testing.T) {
+			pdf, err := r.Render(context.Background(), tmpl, "/data/cv-example.yaml", "")
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
@@ -86,7 +102,7 @@ func TestRenderTemplateSelection(t *testing.T) {
 // typst's stderr must surface as a Go error rather than an empty PDF.
 func TestRenderMissingData(t *testing.T) {
 	r := newRenderer(t)
-	_, err := r.Render(context.Background(), helsinki, "/data/does-not-exist.yaml")
+	_, err := r.Render(context.Background(), helsinki, "/data/does-not-exist.yaml", "")
 	if err == nil {
 		t.Fatal("expected an error for a missing data file")
 	}

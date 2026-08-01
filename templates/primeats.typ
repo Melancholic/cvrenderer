@@ -135,7 +135,6 @@
   }
 }
 
-#let photo = field(data, "photo")
 #if photo != none {
   grid(
     columns: (1fr, auto), column-gutter: 6mm, align: (left, right),

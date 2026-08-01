@@ -29,7 +29,7 @@ COPY fonts/ /app/fonts/
 # Vendored Typst packages (e.g. cmarker) so `@preview/...` imports resolve
 # offline, with no network access at render time.
 COPY typst-packages/ /app/typst-packages/
-# A default CV (+ its placeholder photo) so the service works out of the box;
+# The sample CV (+ its placeholder photo) so the service works out of the box;
 # override or add more by mounting a volume at /app/data (see
 # docker-compose.yml). Each data/<name>.yaml is served at
 # GET /cv/<template>/<name>.pdf.
