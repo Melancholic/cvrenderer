@@ -20,6 +20,8 @@ func main() {
 	srv := server.New(cfg)
 	httpSrv := srv.HTTPServer()
 
+	srv.LogURLs()
+
 	go func() {
 		log.Printf("listening on %s (root=%s templates=%s data=%s)", cfg.Addr, cfg.Root, cfg.TemplateDir, cfg.DataDir)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

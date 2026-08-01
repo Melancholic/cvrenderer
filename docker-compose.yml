@@ -9,11 +9,19 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Your CV data. Each ./data/<name>.yaml is served at
-      # GET /cv/<template>/<name>.pdf (e.g. ./data/cv-example.yaml ->
-      # /cv/helsinki/cv-example.pdf). Typst reads under ROOT=/app, so the
-      # directory must be mounted at /app/data.
+      # Your CV data. Each ./data/<name>.yaml (or .yml) is served at
+      # GET /cv/<name>.pdf (e.g. ./data/cv-example.yaml ->
+      # /cv/cv-example.pdf), and DEFAULT_CV also answers at /cv.pdf.
+      # Typst reads under ROOT=/app, so the directory must be mounted
+      # at /app/data.
       - ./data:/app/data:ro
     environment:
       PORT: "8080"
       RENDER_TIMEOUT: "30s"
+      # The CV behind /cv.pdf, and the layout used without ?template=.
+      DEFAULT_CV: "cv-default"
+      DEFAULT_TEMPLATE: "helsinki"
+      # Prints the served URLs at startup (docker compose logs).
+      VIRTUAL_HOST: "localhost:8080"
+      # Download filename: <prefix><YYYYMMDDHHMM>.pdf
+      OUT_FILE_PREFIX: "resume-"

@@ -8,16 +8,21 @@ PDF.
 ## How it works
 
 ```
-GET /cv/<template>/<name>.pdf ─▶ Go service ─▶ typst compile ─▶ application/pdf
-                                                    ▲
-                            templates/<template>.typ + data/<name>.yaml
+GET /cv/<name>.pdf?template=<template> ─▶ Go service ─▶ typst compile ─▶ application/pdf
+                                                             ▲
+                                     templates/<template>.typ + data/<name>.yaml
 ```
 
 The Go service shells out to the `typst` binary, which compiles the requested
 template against the requested CV data file and streams the PDF back. A request
-to `GET /cv/helsinki/cv-example.pdf` renders `data/cv-example.yaml` with
-`templates/helsinki.typ`. Both templates use the **Lato** font shipped in
-`fonts/` (passed to typst via `--font-path`).
+to `GET /cv/cv-example.pdf` renders `data/cv-example.yaml` with the default
+template (`DEFAULT_TEMPLATE`, `helsinki`); `?template=primeats` switches layout.
+One CV — `DEFAULT_CV` (`cv-default`) — is also served without a name, at
+`GET /cv.pdf`. Both templates use the **Lato** font shipped in `fonts/` (passed
+to typst via `--font-path`).
+
+The full list of URLs the service is serving is printed to the log at startup,
+built from `VIRTUAL_HOST` (default `localhost:8080`).
 
 Two templates ship, both reading the **same** `data/<name>.yaml`:
 
@@ -28,14 +33,17 @@ Two templates ship, both reading the **same** `data/<name>.yaml`:
   right-aligned dates, and an optional header photo.
 
 To add your own template, drop a `templates/<name>.typ` file in and it's
-reachable at `/cv/<name>/…` — start it with `#import "_common.typ": *` to reuse
+reachable at `?template=<name>` — start it with `#import "_common.typ": *` to reuse
 the CV data and computed variables. (Shared partials are prefixed with `_` and
 are not selectable as templates.)
 
 ## Your CV
 
-Add a CV as **`data/<name>.yaml`** (the sample is `data/cv-example.yaml`, served
-at `GET /cv/helsinki/cv-example.pdf`). Only `name` is required; every section is optional
+Add a CV as **`data/<name>.yaml`** (or `.yml` — both are accepted, and the URL
+carries no extension either way; `.yaml` wins if a name exists as both). The
+sample is `data/cv-example.yaml`, served at `GET /cv/cv-example.pdf`. Name your
+own CV `cv-default.yaml`/`.yml` (or point `DEFAULT_CV` elsewhere) to get it at
+the short `GET /cv.pdf`. Only `name` is required; every section is optional
 and omitted from the PDF if absent. The schema (see the sample file for a full
 example):
 
@@ -98,32 +106,51 @@ or `age` overrides the automatic one.
 
 ## API
 
-| Method & path                  | Description                                                                 |
-| ------------------------------ | --------------------------------------------------------------------------- |
-| `GET /cv/<template>/<name>.pdf` | Renders `data/<name>.yaml` with `templates/<template>.typ`. `?download` returns it as a file download instead of displaying it in the browser. |
-| `GET /healthz`                 | Liveness probe. Returns `{"status":"ok"}`.                                   |
+| Method & path         | Description                                                                 |
+| --------------------- | --------------------------------------------------------------------------- |
+| `GET /cv/<name>.pdf`  | Renders `data/<name>.yaml` (or `.yml`). |
+| `GET /cv.pdf`         | The same, for `DEFAULT_CV` — the CV you don't want to spell out. |
+| `GET /healthz`        | Liveness probe. Returns `{"status":"ok"}`.                                   |
 
-Both `<template>` and `<name>` must be plain slugs (`[A-Za-z0-9_-]`); anything
+Query parameters, valid on both CV routes:
+
+| Parameter    | Default             | Description |
+| ------------ | ------------------- | ----------- |
+| `?template=` | `DEFAULT_TEMPLATE`  | Which layout to render, i.e. `templates/<template>.typ`. |
+| `?download`  | off (inline)        | Return the PDF as a file download instead of displaying it in the browser. |
+
+Both `<name>` and `template` must be plain slugs (`[A-Za-z0-9_-]`); anything
 else is rejected (400), and an unknown template or CV returns 404.
 
 By default the PDF is served `inline`, so the URL is linkable — a browser opens
 it in its viewer. Add `?download` (or `?download=1`) to get
 `Content-Disposition: attachment` and a save dialog; `?download=0` forces inline
-back on. The suggested filename is the CV name from the URL, e.g.
-`cv-example.pdf`.
+back on. The suggested filename is `OUT_FILE_PREFIX` plus the time of the
+request down to the minute — with `OUT_FILE_PREFIX=John_Smith-` a download on
+1 Aug 2026 at 18:41 is saved as `John_Smith-202608011841.pdf`. It never contains
+the data filename, so recruiters see the name you chose, not `cv-example.pdf`.
+
+Use a `?download` link when the filename matters: browsers honour it on an
+`attachment` response (as do `curl -OJ` and `wget --content-disposition`), but
+Chrome's inline PDF viewer names a save after the URL instead. The name shown
+*inside* the viewer is unrelated — that is the PDF's `/Title` metadata, which
+the templates set from the `name:` field in your CV.
 
 The service is read-only: it renders CVs that exist on disk under `DATA_DIR`,
-and there is no upload endpoint. To add a CV, drop a `<name>.yaml` into `data/`
+and there is no upload endpoint. To add a CV, drop a `<name>.yaml`/`.yml` into `data/`
 (it is a bind mount in `docker-compose.yml`, so no rebuild is needed) and
-request `/cv/<template>/<name>.pdf`.
+request `/cv/<name>.pdf`.
 
 ```bash
-# Render a CV with a template:
-curl -L http://localhost:8080/cv/helsinki/cv-example.pdf -o cv.pdf
-curl -L http://localhost:8080/cv/primeats/cv-example.pdf -o cv-ats.pdf
+# The default CV with the default template:
+curl -L http://localhost:8080/cv.pdf -o cv.pdf
+
+# A named CV, and a different template:
+curl -L http://localhost:8080/cv/cv-example.pdf -o cv.pdf
+curl -L "http://localhost:8080/cv/cv-example.pdf?template=primeats" -o cv-ats.pdf
 
 # Force a browser save dialog rather than the inline PDF viewer:
-curl -L "http://localhost:8080/cv/helsinki/cv-example.pdf?download" -o cv.pdf
+curl -L "http://localhost:8080/cv/cv-example.pdf?download" -o cv.pdf
 ```
 
 ## Caching
@@ -160,14 +187,16 @@ whose cold renders genuinely overlap.
 The service has no authentication: anyone who can reach it can fetch any CV
 whose URL they can guess, and a CV carries name, phone, email, city, date of
 birth and birth place. `<name>` comes straight from the filename, so
-`data/john-smith.yaml` is served at a guessable `/cv/<template>/john-smith.pdf`.
+`data/john-smith.yaml` is served at a guessable `/cv/john-smith.pdf`. Note that
+`DEFAULT_CV` is reachable at `/cv.pdf` with no guessing at all, so pick it
+accordingly.
 
 If the service is reachable from the internet, give each CV an unguessable
 filename — the slug rules already allow it, so this needs no code change:
 
 ```bash
 mv data/john-smith.yaml data/john-smith-7f3a9c2e.yaml
-# -> /cv/helsinki/john-smith-7f3a9c2e.pdf
+# -> /cv/john-smith-7f3a9c2e.pdf
 ```
 
 That turns the URL into a capability: still readable for whoever you send it
@@ -221,7 +250,11 @@ docker pull ghcr.io/melancholic/cvrenderer:latest
 | `PORT`           | `8080`             | Listen port                                        |
 | `ROOT`           | `/app`             | Directory typst may read from (`--root`)           |
 | `TEMPLATE_DIR`   | `templates`        | Directory of `.typ` templates, relative to `ROOT`. `<template>` → `$TEMPLATE_DIR/<template>.typ` |
-| `DATA_DIR`       | `data`             | Directory of CV `.yaml` files, relative to `ROOT`. `<name>` → `$DATA_DIR/<name>.yaml` |
+| `DATA_DIR`       | `data`             | Directory of CV files, relative to `ROOT`. `<name>` → `$DATA_DIR/<name>.yaml`, falling back to `.yml` |
+| `DEFAULT_CV`     | `cv-default`       | The CV served at `/cv.pdf`. Ship `data/cv-default.yml` or point this at another name |
+| `DEFAULT_TEMPLATE` | `helsinki`       | Template used when a request carries no `?template=` |
+| `VIRTUAL_HOST`   | `localhost:8080`   | Public host, used only to print the URL list at startup. A bare host gets `http://`; include a scheme (`https://cv.example.com`) to override |
+| `OUT_FILE_PREFIX` | `resume-`         | Prefix of the suggested download filename: `<prefix><YYYYMMDDHHMM>.pdf`, e.g. `John_Smith-202608011841.pdf` |
 | `FONT_DIR`       | `fonts`            | Extra font dir passed to typst (`--font-path`)     |
 | `PACKAGE_CACHE_DIR` | `typst-packages` | Vendored Typst package cache (`--package-cache-path`), so `@preview/…` imports resolve offline |
 | `TYPST_BIN`      | `typst`            | Path to the typst executable                       |

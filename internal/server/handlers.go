@@ -22,17 +22,25 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// 304s and cache hits are answered before a render slot is taken, so repeat
-// traffic is never shed by the concurrency cap. Keep that ordering.
+func (s *Server) handleDefaultCV(w http.ResponseWriter, r *http.Request) {
+	s.serveCV(w, r, s.cfg.DefaultCV)
+}
+
 func (s *Server) handleCV(w http.ResponseWriter, r *http.Request) {
-	tmpl, status, msg := s.resolveTemplate(r.PathValue("template"))
-	if status != 0 {
-		writeError(w, status, msg)
-		return
-	}
 	name, ok := strings.CutSuffix(r.PathValue("name"), ".pdf")
 	if !ok {
-		writeError(w, http.StatusNotFound, "a CV must be requested as /cv/<template>/<name>.pdf")
+		writeError(w, http.StatusNotFound, "a CV must be requested as /cv/<name>.pdf")
+		return
+	}
+	s.serveCV(w, r, name)
+}
+
+// 304s and cache hits are answered before a render slot is taken, so repeat
+// traffic is never shed by the concurrency cap. Keep that ordering.
+func (s *Server) serveCV(w http.ResponseWriter, r *http.Request, name string) {
+	tmpl, status, msg := s.resolveTemplate(templateRequested(r, s.cfg.DefaultTemplate))
+	if status != 0 {
+		writeError(w, status, msg)
 		return
 	}
 	data, status, msg := s.resolveCV(name)
@@ -52,7 +60,7 @@ func (s *Server) handleCV(w http.ResponseWriter, r *http.Request) {
 	}
 	if pdf, ok := s.cache.get(key); ok {
 		s.setCacheHeaders(w, etag)
-		s.writePDF(w, name+".pdf", attach, pdf)
+		s.writePDF(w, s.outFilename(), attach, pdf)
 		return
 	}
 
@@ -77,7 +85,7 @@ func (s *Server) handleCV(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cache.put(key, pdf)
 	s.setCacheHeaders(w, etag)
-	s.writePDF(w, name+".pdf", attach, pdf)
+	s.writePDF(w, s.outFilename(), attach, pdf)
 }
 
 // `private` by default: shared proxies must not retain personal data.
@@ -92,6 +100,22 @@ func (s *Server) setCacheHeaders(w http.ResponseWriter, etag string) {
 	}
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", scope+", max-age="+strconv.Itoa(cacheMaxAge(s.cfg.CacheTTL, s.now())))
+}
+
+// "resume-202608011841.pdf". A response header only: not part of the cache key,
+// so cached bytes replay under a fresh name. The prefix is env-supplied but
+// can't corrupt the header — writePDF escapes it. The title viewers show is the
+// PDF's own /Title, set by the templates from the CV's `name`.
+func (s *Server) outFilename() string {
+	// Go's reference time (Jan 2 15:04:05 2006) spelled as YYYYMMDDHHMM.
+	return s.cfg.OutFilePrefix + s.now().Format("200601021504") + ".pdf"
+}
+
+func templateRequested(r *http.Request, def string) string {
+	if v := strings.TrimSpace(r.URL.Query().Get("template")); v != "" {
+		return v
+	}
+	return def
 }
 
 // A bare or unparseable value counts as true — asking at all signals intent;
@@ -116,17 +140,25 @@ type resolved struct {
 	mod  time.Time
 }
 
+// Tried in order, so a name present as both resolves to .yaml.
+var dataExts = []string{".yaml", ".yml"}
+
 // Returns the root-absolute path typst expects, e.g. "/data/cv-example.yaml".
 func (s *Server) resolveCV(name string) (r resolved, status int, msg string) {
 	if !slug.MatchString(name) {
 		return resolved{}, http.StatusBadRequest, "invalid CV name"
 	}
-	info, err := os.Stat(filepath.Join(s.cfg.Root, s.cfg.DataDir, name+".yaml"))
-	if err != nil {
-		return resolved{}, http.StatusNotFound, "unknown CV: " + name
+	// The chosen extension lands in resolved.path, hence in the cache key, so
+	// renaming cv.yml -> cv.yaml invalidates rather than replaying stale bytes.
+	for _, ext := range dataExts {
+		info, err := os.Stat(filepath.Join(s.cfg.Root, s.cfg.DataDir, name+ext))
+		if err != nil {
+			continue
+		}
+		path := "/" + s.cfg.DataDir + "/" + name + ext
+		return resolved{path: path, size: info.Size(), mod: info.ModTime()}, 0, ""
 	}
-	path := "/" + s.cfg.DataDir + "/" + name + ".yaml"
-	return resolved{path: path, size: info.Size(), mod: info.ModTime()}, 0, ""
+	return resolved{}, http.StatusNotFound, "unknown CV: " + name
 }
 
 func (s *Server) resolveTemplate(name string) (r resolved, status int, msg string) {
