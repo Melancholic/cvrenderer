@@ -8,22 +8,34 @@ import (
 	"strings"
 )
 
-// A bare host gets http://; a value with a scheme is used verbatim.
-func baseURL(virtualHost string) string {
-	host := strings.TrimRight(strings.TrimSpace(virtualHost), "/")
+// A LETSENCRYPT_HOST means acme-companion holds a certificate, i.e. the proxy
+// serves this over TLS, so the public URL is https. A scheme in VIRTUAL_HOST
+// still wins, but nginx-proxy reads that variable as a bare hostname — don't
+// put one there in production.
+func baseURL(virtualHost, letsencryptHost string) string {
+	host := firstHost(virtualHost)
 	if host == "" {
 		return "http://localhost:8080"
 	}
 	if strings.Contains(host, "://") {
 		return host
 	}
+	if firstHost(letsencryptHost) != "" {
+		return "https://" + host
+	}
 	return "http://" + host
+}
+
+// Both variables accept a comma-separated list of names; the first is ours.
+func firstHost(v string) string {
+	name, _, _ := strings.Cut(v, ",")
+	return strings.TrimRight(strings.TrimSpace(name), "/")
 }
 
 // URLs lists every URL that renders a PDF, one per CV per template. The
 // default template is addressed by the bare path rather than ?template=.
 func (s *Server) URLs() []string {
-	base := baseURL(s.cfg.VirtualHost)
+	base := baseURL(s.cfg.VirtualHost, s.cfg.LetsencryptHost)
 	templates := s.listTemplates()
 	if len(templates) == 0 {
 		return nil
@@ -55,8 +67,8 @@ func (s *Server) URLs() []string {
 	return urls
 }
 
-// LogURLs prints the listing at startup; a default naming a file nobody added
-// would otherwise surface only as a 404 in the browser.
+// LogURLs prints the listing at startup and warns about a default naming a
+// file nobody added, which would otherwise surface only as a browser 404.
 func (s *Server) LogURLs() {
 	urls := s.URLs()
 	if len(urls) == 0 {

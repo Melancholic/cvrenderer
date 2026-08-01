@@ -9,17 +9,38 @@ import (
 )
 
 func TestBaseURL(t *testing.T) {
-	cases := map[string]string{
-		"":                       "http://localhost:8080",
-		"localhost:8080":         "http://localhost:8080",
-		"cv.example.com":         "http://cv.example.com",
-		"cv.example.com/":        "http://cv.example.com",
-		"https://cv.example.com": "https://cv.example.com",
+	cases := []struct {
+		virtualHost, letsencryptHost, want string
+	}{
+		{"", "", "http://localhost:8080"},
+		{"localhost:8080", "", "http://localhost:8080"},
+		{"cv.example.com", "", "http://cv.example.com"},
+		{"cv.example.com/", "", "http://cv.example.com"},
+		{"https://cv.example.com", "", "https://cv.example.com"},
+		// A certificate for the host means the proxy serves it over TLS.
+		{"cv.example.com", "cv.example.com", "https://cv.example.com"},
+		{"cv.example.com", "cv.example.com,www.example.com", "https://cv.example.com"},
+		{"cv.example.com, www.example.com", "cv.example.com", "https://cv.example.com"},
+		// An explicit scheme still wins.
+		{"http://cv.example.com", "cv.example.com", "http://cv.example.com"},
 	}
-	for in, want := range cases {
-		if got := baseURL(in); got != want {
-			t.Errorf("baseURL(%q) = %q, want %q", in, got, want)
+	for _, c := range cases {
+		if got := baseURL(c.virtualHost, c.letsencryptHost); got != c.want {
+			t.Errorf("baseURL(%q, %q) = %q, want %q", c.virtualHost, c.letsencryptHost, got, c.want)
 		}
+	}
+}
+
+// VIRTUAL_HOST unset but LETSENCRYPT_HOST set: the certificate names the real
+// host, so the listing must not fall back to localhost.
+func TestConfigHostFallsBackToLetsencryptHost(t *testing.T) {
+	t.Setenv("LETSENCRYPT_HOST", "cv.example.com")
+	cfg := config.Load()
+	if cfg.VirtualHost != "cv.example.com" {
+		t.Errorf("VirtualHost = %q, want cv.example.com", cfg.VirtualHost)
+	}
+	if got := baseURL(cfg.VirtualHost, cfg.LetsencryptHost); got != "https://cv.example.com" {
+		t.Errorf("baseURL = %q, want https://cv.example.com", got)
 	}
 }
 

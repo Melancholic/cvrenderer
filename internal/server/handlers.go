@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-// slug guards names used to build file paths: no dots (blocks ".."), no
-// slashes (blocks traversal). Don't weaken it.
+// slug guards names used to build file paths: no dots (".."), no slashes.
+// Don't weaken it.
 var slug = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -78,7 +78,6 @@ func (s *Server) serveCV(w http.ResponseWriter, r *http.Request, name string) {
 	pdf, err := s.renderer.Render(r.Context(), tmpl.path, data.path)
 	if err != nil {
 		// typst's stderr quotes template source and absolute paths: log only.
-		// 500 not 404 — the file exists, so this is a fault worth alerting on.
 		log.Printf("render %s with %s: %v", data.path, tmpl.path, err)
 		writeError(w, http.StatusInternalServerError, "failed to render CV")
 		return
@@ -102,12 +101,9 @@ func (s *Server) setCacheHeaders(w http.ResponseWriter, etag string) {
 	w.Header().Set("Cache-Control", scope+", max-age="+strconv.Itoa(cacheMaxAge(s.cfg.CacheTTL, s.now())))
 }
 
-// "resume-202608011841.pdf". A response header only: not part of the cache key,
-// so cached bytes replay under a fresh name. The prefix is env-supplied but
-// can't corrupt the header — writePDF escapes it. The title viewers show is the
-// PDF's own /Title, set by the templates from the CV's `name`.
+// "resume-202608011841.pdf" — a response header only, not part of the cache
+// key, so cached bytes replay under a fresh name.
 func (s *Server) outFilename() string {
-	// Go's reference time (Jan 2 15:04:05 2006) spelled as YYYYMMDDHHMM.
 	return s.cfg.OutFilePrefix + s.now().Format("200601021504") + ".pdf"
 }
 
@@ -144,12 +140,12 @@ type resolved struct {
 var dataExts = []string{".yaml", ".yml"}
 
 // Returns the root-absolute path typst expects, e.g. "/data/cv-example.yaml".
+// The chosen extension lands in resolved.path, hence in the cache key, so
+// renaming cv.yml -> cv.yaml invalidates rather than replaying stale bytes.
 func (s *Server) resolveCV(name string) (r resolved, status int, msg string) {
 	if !slug.MatchString(name) {
 		return resolved{}, http.StatusBadRequest, "invalid CV name"
 	}
-	// The chosen extension lands in resolved.path, hence in the cache key, so
-	// renaming cv.yml -> cv.yaml invalidates rather than replaying stale bytes.
 	for _, ext := range dataExts {
 		info, err := os.Stat(filepath.Join(s.cfg.Root, s.cfg.DataDir, name+ext))
 		if err != nil {
@@ -174,7 +170,7 @@ func (s *Server) resolveTemplate(name string) (r resolved, status int, msg strin
 }
 
 // Content-Disposition is built with mime.FormatMediaType, never concatenation:
-// it escapes the filename, so none can break out of the header.
+// it escapes the env-supplied filename so it can't break out of the header.
 func (s *Server) writePDF(w http.ResponseWriter, filename string, attach bool, pdf []byte) {
 	disp := "inline"
 	if attach {
@@ -187,8 +183,7 @@ func (s *Server) writePDF(w http.ResponseWriter, filename string, attach bool, p
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", value)
 	if !s.cfg.AllowIndexing {
-		// An indexed CV can't be unpublished retroactively.
-		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow") // an indexed CV can't be unpublished
 	}
 	w.Header().Set("Content-Length", strconv.Itoa(len(pdf)))
 	w.WriteHeader(http.StatusOK)
@@ -205,8 +200,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// Liveness probes hit healthPath every few seconds and would bury everything
-// else, so they are served but not logged.
+// Liveness probes hit healthPath every few seconds, so they go unlogged.
 func logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == healthPath {

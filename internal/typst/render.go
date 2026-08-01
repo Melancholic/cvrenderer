@@ -1,10 +1,8 @@
-// Package typst is a thin wrapper around the `typst` CLI. It compiles a Typst
-// template against a YAML data file and returns the resulting PDF bytes.
+// Package typst is a thin wrapper around the `typst` CLI: it compiles a
+// template against a YAML data file and returns the PDF bytes.
 //
 // Typst reads files only from within its `--root` directory, so both the
-// template and any data file must live under Root. Data paths are passed to the
-// template as root-absolute paths (leading "/"), which is how Typst addresses
-// files relative to the root.
+// template and any data file must live under Root.
 package typst
 
 import (
@@ -26,8 +24,7 @@ type Renderer struct {
 }
 
 // Note the asymmetry: templatePath is relative to Root, dataPath is
-// root-absolute ("/data/cv-example.yaml"). The PDF streams from stdout, so
-// nothing touches disk on the output side.
+// root-absolute ("/data/cv-example.yaml").
 func (r *Renderer) Render(ctx context.Context, templatePath, dataPath string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()
@@ -47,9 +44,7 @@ func (r *Renderer) Render(ctx context.Context, templatePath, dataPath string) ([
 		args = append(args, "--package-cache-path", r.PackageCacheDir)
 	}
 	cmd := exec.CommandContext(ctx, r.Bin, args...)
-	// The template path is resolved relative to the process working directory,
-	// so anchor it at Root (where templates/ lives).
-	cmd.Dir = r.Root
+	cmd.Dir = r.Root // templatePath is resolved against the working directory
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-// findRoot walks up to the repository root (the dir containing go.mod) so the
-// test can locate templates/ and data/ regardless of the working directory.
+// findRoot locates templates/ and data/ regardless of the working directory.
 func findRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -30,8 +29,8 @@ func findRoot(t *testing.T) string {
 	}
 }
 
-// newRenderer skips the test when the typst binary is not installed, so the
-// unit suite still passes in minimal environments.
+// newRenderer skips the test when typst is not installed, so the unit suite
+// still passes in minimal environments.
 func newRenderer(t *testing.T) *Renderer {
 	t.Helper()
 	bin := os.Getenv("TYPST_BIN")
@@ -51,7 +50,6 @@ func newRenderer(t *testing.T) *Renderer {
 	}
 }
 
-// helsinki is the default template, relative to Root, used across render tests.
 const helsinki = "templates/helsinki.typ"
 
 func TestRenderDefaultData(t *testing.T) {
@@ -68,9 +66,8 @@ func TestRenderDefaultData(t *testing.T) {
 	}
 }
 
-// TestRenderTemplateSelection checks that every shipped template compiles
-// against the sample data, so a broken template fails the suite rather than a
-// request.
+// Every shipped template must compile against the sample data, so a broken one
+// fails the suite rather than a request.
 func TestRenderTemplateSelection(t *testing.T) {
 	r := newRenderer(t)
 	for _, tmpl := range []string{"templates/helsinki.typ", "templates/primeats.typ"} {
@@ -86,8 +83,7 @@ func TestRenderTemplateSelection(t *testing.T) {
 	}
 }
 
-// TestRenderMissingData covers the failure path: typst's stderr must surface as
-// a Go error rather than an empty PDF.
+// typst's stderr must surface as a Go error rather than an empty PDF.
 func TestRenderMissingData(t *testing.T) {
 	r := newRenderer(t)
 	_, err := r.Render(context.Background(), helsinki, "/data/does-not-exist.yaml")

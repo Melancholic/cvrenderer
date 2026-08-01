@@ -21,7 +21,9 @@ services:
       # The CV behind /cv.pdf, and the layout used without ?template=.
       DEFAULT_CV: "cv-default"
       DEFAULT_TEMPLATE: "helsinki"
-      # Prints the served URLs at startup (docker compose logs).
+      # Prints the served URLs at startup (docker compose logs). Behind
+      # nginx-proxy set VIRTUAL_HOST to the public name; LETSENCRYPT_HOST
+      # (acme-companion) is what switches those URLs to https.
       VIRTUAL_HOST: "localhost:8080"
       # Download filename: <prefix><YYYYMMDDHHMM>.pdf
       OUT_FILE_PREFIX: "resume-"

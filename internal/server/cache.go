@@ -91,7 +91,7 @@ func (c *renderCache) evictLocked() {
 
 // The date is load-bearing: templates resolve {{age}}, {{experience_years}} and
 // `end: Present` from datetime.today(), so the same YAML renders differently
-// tomorrow. Size+mtime make an edit invalidate.
+// tomorrow. Size+mtime make an edit invalidate without a restart.
 func cacheKey(tmpl, data resolved, day string) string {
 	var b strings.Builder
 	for _, r := range []resolved{tmpl, data} {
@@ -110,7 +110,7 @@ func cacheKey(tmpl, data resolved, day string) string {
 func etagFor(key string) string { return `"` + key[:32] + `"` }
 
 // CACHE_TTL capped at local midnight, when the date-derived fields above go
-// stale. Local time: typst's datetime.today() shares this process's timezone.
+// stale — typst's datetime.today() shares this process's timezone.
 func cacheMaxAge(ttl time.Duration, now time.Time) int {
 	seconds := int(ttl.Seconds())
 	midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
