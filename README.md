@@ -45,9 +45,11 @@ Name your own CV `cv-default.yaml`/`.yml` (or point `DEFAULT_CV` elsewhere) to
 get it at the short `GET /cv.pdf`. Only `name` is required; every other section
 is optional and omitted from the PDF if absent:
 
-- **Header:** `name`, `title`, optional `photo` — a **root-absolute** path under
-  `ROOT` (e.g. `/data/photo.svg`; `.svg`/`.jpg`/`.png` all work). If omitted,
-  `helsinki` draws an initials avatar and `primeats` shows no photo.
+- **Header:** `name`, `title`. The photo is **not** a field — name it after the
+  CV: `data/<name>-photo.<ext>`, with `.png`, `.jpg`, `.jpeg` or `.svg` (tried in
+  that order), e.g. `data/cv-example-photo.svg` for `data/cv-example.yaml`. With
+  no such file, `helsinki` draws an initials avatar and `primeats` shows no
+  photo.
 - **Sidebar:** `details` (location, phone, email, nationality, driving_license,
   birth_date, birth_place), `links` (`label` + `url`), `skills` (`name` +
   `level` 1–10, drives a rating bar), `languages` (`name` + `level` as a

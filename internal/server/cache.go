@@ -92,9 +92,9 @@ func (c *renderCache) evictLocked() {
 // The date is load-bearing: templates resolve {{age}}, {{experience_years}} and
 // `end: Present` from datetime.today(), so the same YAML renders differently
 // tomorrow. Size+mtime make an edit invalidate without a restart.
-func cacheKey(tmpl, data resolved, day string) string {
+func cacheKey(tmpl, data, photo resolved, day string) string {
 	var b strings.Builder
-	for _, r := range []resolved{tmpl, data} {
+	for _, r := range []resolved{tmpl, data, photo} {
 		b.WriteString(r.path)
 		b.WriteByte(0)
 		b.WriteString(strconv.FormatInt(r.size, 10))

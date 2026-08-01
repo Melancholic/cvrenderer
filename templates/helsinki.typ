@@ -60,7 +60,6 @@
 }
 
 #let avatar(size) = {
-  let photo = field(data, "photo")
   if photo != none {
     box(clip: true, radius: 50%, width: size, height: size, image(photo, width: size, height: size, fit: "cover"))
   } else {

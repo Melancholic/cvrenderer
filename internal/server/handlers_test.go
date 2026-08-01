@@ -195,6 +195,56 @@ func TestResolveCVPrefersYamlOverYml(t *testing.T) {
 	}
 }
 
+func TestResolvePhotoByConvention(t *testing.T) {
+	cfg := config.Load()
+	cfg.Root = repoRoot(t) // no typst needed: resolvePhoto only stats
+	srv := New(cfg)
+	name := "zz-photo-" + strconv.Itoa(os.Getpid())
+
+	if got := srv.resolvePhoto(name); got.path != "" {
+		t.Errorf("path = %q, want none for a CV with no photo file", got.path)
+	}
+
+	// .jpg is written second but wins: photoExts order decides, not the filesystem.
+	for _, ext := range []string{".svg", ".jpg"} {
+		p := filepath.Join(cfg.Root, cfg.DataDir, name+"-photo"+ext)
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Remove(p) })
+	}
+	got := srv.resolvePhoto(name)
+	if want := "/" + cfg.DataDir + "/" + name + "-photo.jpg"; got.path != want {
+		t.Errorf("path = %q, want %q", got.path, want)
+	}
+	if got.size == 0 || got.mod.IsZero() {
+		t.Error("photo stat must feed the cache key, so size/mtime are required")
+	}
+}
+
+// A CV with no photo file must render, not 500 on typst's "file not found".
+func TestCVWithoutPhotoRenders(t *testing.T) {
+	srv := newTestServer(t)
+	name := "zz-nophoto-" + strconv.Itoa(os.Getpid())
+	body, err := os.ReadFile(filepath.Join(srv.cfg.Root, srv.cfg.DataDir, "cv-example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(srv.cfg.Root, srv.cfg.DataDir, name+".yaml")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(path) })
+
+	for _, tmpl := range []string{"helsinki", "primeats"} {
+		rr := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/"+name+".pdf?template="+tmpl, nil))
+		if rr.Code != http.StatusOK {
+			t.Errorf("%s: status = %d, want 200 (body: %s)", tmpl, rr.Code, rr.Body.String())
+		}
+	}
+}
+
 func TestCVDisposition(t *testing.T) {
 	srv := newTestServer(t)
 	srv.now = func() time.Time { return time.Date(2026, 8, 1, 18, 41, 9, 0, time.UTC) }
