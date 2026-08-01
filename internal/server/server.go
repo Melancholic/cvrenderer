@@ -62,13 +62,16 @@ func (s *Server) acquireRenderSlot(ctx context.Context) (release func(), err err
 	}
 }
 
-const healthPath = "/healthz"
+const (
+	healthPath    = "/healthz"
+	defaultCVPath = "/cv.pdf"
+)
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+healthPath, s.handleHealth)
-	// GET /cv/<template>/<name>.pdf
-	mux.HandleFunc("GET /cv/{template}/{name}", s.handleCV)
+	mux.HandleFunc("GET "+defaultCVPath, s.handleDefaultCV)
+	mux.HandleFunc("GET /cv/{name}", s.handleCV)
 	return logRequests(mux)
 }
 

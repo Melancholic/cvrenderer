@@ -14,6 +14,11 @@ type Config struct {
 	Root                 string        // ROOT (/app), the only dir typst may read; the four below are relative to it
 	TemplateDir          string        // TEMPLATE_DIR (templates), <template> -> <dir>/<template>.typ
 	DataDir              string        // DATA_DIR (data), <name> -> <dir>/<name>.yaml
+	DefaultCV            string        // DEFAULT_CV (cv-default), the CV served at /cv.pdf
+	DefaultTemplate      string        // DEFAULT_TEMPLATE (helsinki), used when ?template= is absent
+	VirtualHost          string        // VIRTUAL_HOST (localhost:8080), only used to print the URL list at startup
+	LetsencryptHost      string        // LETSENCRYPT_HOST (unset), presence means the proxy terminates TLS, so the listing says https
+	OutFilePrefix        string        // OUT_FILE_PREFIX (resume-), download filename is <prefix><timestamp>.pdf
 	FontDir              string        // FONT_DIR (fonts), "" leaves only typst's embedded serif faces
 	PackageCacheDir      string        // PACKAGE_CACHE_DIR (typst-packages), vendored so @preview/... resolves offline
 	RenderTimeout        time.Duration // RENDER_TIMEOUT (30s), bounds one typst invocation
@@ -32,6 +37,12 @@ func Load() Config {
 		Root:            getEnv("ROOT", "/app"),
 		TemplateDir:     getEnv("TEMPLATE_DIR", "templates"),
 		DataDir:         getEnv("DATA_DIR", "data"),
+		DefaultCV:       getEnv("DEFAULT_CV", "cv-default"),
+		DefaultTemplate: getEnv("DEFAULT_TEMPLATE", "helsinki"),
+		// Both are nginx-proxy/acme-companion conventions and normally set together.
+		VirtualHost:     getEnv("VIRTUAL_HOST", getEnv("LETSENCRYPT_HOST", "localhost:8080")),
+		LetsencryptHost: os.Getenv("LETSENCRYPT_HOST"),
+		OutFilePrefix:   getEnv("OUT_FILE_PREFIX", "resume-"),
 		FontDir:         getEnv("FONT_DIR", "fonts"),
 		PackageCacheDir: getEnv("PACKAGE_CACHE_DIR", "typst-packages"),
 		RenderTimeout:   getDuration("RENDER_TIMEOUT", 30*time.Second),
@@ -45,7 +56,7 @@ func Load() Config {
 }
 
 // The getters below fall back to the default on a malformed value, so a typo'd
-// env var is silent — check the startup log if a setting seems ignored.
+// env var is silent.
 func getEnv(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

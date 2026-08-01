@@ -1,10 +1,8 @@
 // Shared data + computed-variable logic for all CV templates. Each template
-// (`helsinki.typ`, `primeats.typ`, …) imports this with `#import "_common.typ": *`
-// and only defines its own layout, so the CV data and its derived values live
-// in exactly one place. Presentation (palette, spacing, Markdown markers) stays
-// in the individual templates.
+// imports this with `#import "_common.typ": *` and only defines its own layout;
+// presentation (palette, spacing, Markdown markers) stays in the template.
 //
-// Data path is passed with `--input data=/data/<name>.yaml` (root-absolute).
+// The data path is passed with `--input data=/data/<name>.yaml` (root-absolute).
 #let data = yaml(sys.inputs.at("data", default: "/data/cv-example.yaml"))
 
 // Safe optional field access.
@@ -74,10 +72,8 @@
   }
 }
 
-// Total worked months across all experience entries, counting overlapping
-// jobs only once: collect each job's month interval, sort, merge overlapping
-// (or touching) intervals, then sum the merged spans. Gaps between jobs are
-// excluded; concurrent jobs are not double-counted.
+// Total worked months, counting concurrent jobs once: sort the per-job month
+// intervals, merge overlapping/touching ones, sum the merged spans (gaps out).
 #let experience-months() = {
   let ivals = ()
   for job in field(data, "experience", default: ()) {
@@ -115,9 +111,8 @@
       vars.insert(k, str(v))
     }
   }
-  // Auto {{experience_years}} from real work history (unless overridden).
-  // Month-precise: whole years, with a trailing "+" when the leftover months
-  // are >= 6 (e.g. 10y6m -> "10+", 10y5m -> "10").
+  // Auto {{experience_years}}: whole years, with a trailing "+" when the
+  // leftover months are >= 6 (10y6m -> "10+", 10y5m -> "10").
   if "experience_years" not in vars {
     let m = experience-months()
     if m > 0 {

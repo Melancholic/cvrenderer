@@ -1,9 +1,6 @@
-// Typst CV template — a two-column layout: a white main column with a
-// full-height dark sidebar on the right. Data + computed variables come from
-// _common.typ; this file is only the Helsinki layout.
-//
-// Fonts come from --font-path (Lato). See internal/typst for how the service
-// invokes this.
+// Typst CV template — two columns: a white main column with a full-height navy
+// sidebar on the right. Data + computed variables come from _common.typ; this
+// file is only the layout. Fonts come from --font-path (Lato).
 #import "@preview/cmarker:0.1.1"
 #import "_common.typ": *
 
@@ -37,8 +34,8 @@
 #let fs-h3 = 12pt      // secondary headings (sidebar sections)
 #let fs-regular = 10pt // body text and meta (dates, locations, URLs, sidebar)
 
-// Render a Markdown string (after {{var}} substitution) as body copy. Used for
-// free-form entry descriptions (jobs, education); nesting uses •, ○, ‣ by depth.
+// Free-form entry descriptions: Markdown (after {{var}} substitution) as body
+// copy; nesting uses •, ○, ‣ by depth.
 #let md-body(markdown) = {
   set list(marker: ([•], [○], [‣]), spacing: item-gap, body-indent: 0.4em)
   set par(leading: line-gap, spacing: item-gap)
@@ -73,8 +70,7 @@
   }
 }
 
-// Main-column headings take the sidebar's navy so the two columns echo each
-// other: white-on-navy in the sidebar, navy-on-white here.
+// Navy here, white-on-navy in the sidebar, so the two columns echo each other.
 #let heading-main(title) = block(above: gap-section, below: u)[
   #text(size: fs-h1, weight: "black", fill: navy)[#title]
 ]
@@ -83,7 +79,6 @@
   #text(size: fs-h3, weight: "bold", fill: side-text)[#title]
 ]
 
-// Small uppercase sidebar label above a value.
 #let side-field(label, value) = if value != none {
   block(above: gap-entry)[
     #text(size: fs-regular, fill: side-label, tracking: 1pt)[#upper(label)]
@@ -104,9 +99,7 @@
   ]
 }
 
-// ===========================================================================
-// MAIN COLUMN
-// ===========================================================================
+// ---- main column ----------------------------------------------------------
 #let main-column = {
   block(below: u)[
     #grid(
@@ -159,7 +152,6 @@
       if s != none or e != none {
         block(above: u, below: 0em)[#text(size: fs-regular, fill: muted, tracking: 0.8pt)[#upper[#s — #e]]]
       }
-      // Free-form Markdown (paragraphs + nested bullet lists).
       let desc = field(job, "description")
       if desc != none { block(above: gap-entry)[#md-body(desc)] }
     }
@@ -182,7 +174,6 @@
     if items.len() > 0 { list(..items, marker: ([•]), spacing: item-gap, body-indent: 0.4em) }
   }
 
-  // Education. Same layout as Employment History.
   let education = field(data, "education", default: ())
   if education.len() > 0 {
     heading-main("Education")
@@ -241,9 +232,7 @@
   }
 }
 
-// ===========================================================================
-// SIDEBAR
-// ===========================================================================
+// ---- sidebar --------------------------------------------------------------
 #let sidebar = {
   set text(fill: side-text, size: fs-regular)
 
@@ -313,9 +302,7 @@
   }
 }
 
-// ===========================================================================
-// LAYOUT: two columns, main breaks across pages, sidebar over the navy panel.
-// ===========================================================================
+// ---- layout: main breaks across pages, sidebar sits over the navy panel ----
 #grid(
   columns: (1fr, sidebar-w),
   gutter: 0pt,

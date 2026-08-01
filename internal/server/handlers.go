@@ -14,25 +14,33 @@ import (
 	"time"
 )
 
-// slug guards names used to build file paths: no dots (blocks ".."), no
-// slashes (blocks traversal). Don't weaken it.
+// slug guards names used to build file paths: no dots (".."), no slashes.
+// Don't weaken it.
 var slug = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// 304s and cache hits are answered before a render slot is taken, so repeat
-// traffic is never shed by the concurrency cap. Keep that ordering.
+func (s *Server) handleDefaultCV(w http.ResponseWriter, r *http.Request) {
+	s.serveCV(w, r, s.cfg.DefaultCV)
+}
+
 func (s *Server) handleCV(w http.ResponseWriter, r *http.Request) {
-	tmpl, status, msg := s.resolveTemplate(r.PathValue("template"))
-	if status != 0 {
-		writeError(w, status, msg)
-		return
-	}
 	name, ok := strings.CutSuffix(r.PathValue("name"), ".pdf")
 	if !ok {
-		writeError(w, http.StatusNotFound, "a CV must be requested as /cv/<template>/<name>.pdf")
+		writeError(w, http.StatusNotFound, "a CV must be requested as /cv/<name>.pdf")
+		return
+	}
+	s.serveCV(w, r, name)
+}
+
+// 304s and cache hits are answered before a render slot is taken, so repeat
+// traffic is never shed by the concurrency cap. Keep that ordering.
+func (s *Server) serveCV(w http.ResponseWriter, r *http.Request, name string) {
+	tmpl, status, msg := s.resolveTemplate(templateRequested(r, s.cfg.DefaultTemplate))
+	if status != 0 {
+		writeError(w, status, msg)
 		return
 	}
 	data, status, msg := s.resolveCV(name)
@@ -52,7 +60,7 @@ func (s *Server) handleCV(w http.ResponseWriter, r *http.Request) {
 	}
 	if pdf, ok := s.cache.get(key); ok {
 		s.setCacheHeaders(w, etag)
-		s.writePDF(w, name+".pdf", attach, pdf)
+		s.writePDF(w, s.outFilename(), attach, pdf)
 		return
 	}
 
@@ -70,14 +78,13 @@ func (s *Server) handleCV(w http.ResponseWriter, r *http.Request) {
 	pdf, err := s.renderer.Render(r.Context(), tmpl.path, data.path)
 	if err != nil {
 		// typst's stderr quotes template source and absolute paths: log only.
-		// 500 not 404 — the file exists, so this is a fault worth alerting on.
 		log.Printf("render %s with %s: %v", data.path, tmpl.path, err)
 		writeError(w, http.StatusInternalServerError, "failed to render CV")
 		return
 	}
 	s.cache.put(key, pdf)
 	s.setCacheHeaders(w, etag)
-	s.writePDF(w, name+".pdf", attach, pdf)
+	s.writePDF(w, s.outFilename(), attach, pdf)
 }
 
 // `private` by default: shared proxies must not retain personal data.
@@ -92,6 +99,19 @@ func (s *Server) setCacheHeaders(w http.ResponseWriter, etag string) {
 	}
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", scope+", max-age="+strconv.Itoa(cacheMaxAge(s.cfg.CacheTTL, s.now())))
+}
+
+// "resume-202608011841.pdf" — a response header only, not part of the cache
+// key, so cached bytes replay under a fresh name.
+func (s *Server) outFilename() string {
+	return s.cfg.OutFilePrefix + s.now().Format("200601021504") + ".pdf"
+}
+
+func templateRequested(r *http.Request, def string) string {
+	if v := strings.TrimSpace(r.URL.Query().Get("template")); v != "" {
+		return v
+	}
+	return def
 }
 
 // A bare or unparseable value counts as true — asking at all signals intent;
@@ -116,17 +136,25 @@ type resolved struct {
 	mod  time.Time
 }
 
+// Tried in order, so a name present as both resolves to .yaml.
+var dataExts = []string{".yaml", ".yml"}
+
 // Returns the root-absolute path typst expects, e.g. "/data/cv-example.yaml".
+// The chosen extension lands in resolved.path, hence in the cache key, so
+// renaming cv.yml -> cv.yaml invalidates rather than replaying stale bytes.
 func (s *Server) resolveCV(name string) (r resolved, status int, msg string) {
 	if !slug.MatchString(name) {
 		return resolved{}, http.StatusBadRequest, "invalid CV name"
 	}
-	info, err := os.Stat(filepath.Join(s.cfg.Root, s.cfg.DataDir, name+".yaml"))
-	if err != nil {
-		return resolved{}, http.StatusNotFound, "unknown CV: " + name
+	for _, ext := range dataExts {
+		info, err := os.Stat(filepath.Join(s.cfg.Root, s.cfg.DataDir, name+ext))
+		if err != nil {
+			continue
+		}
+		path := "/" + s.cfg.DataDir + "/" + name + ext
+		return resolved{path: path, size: info.Size(), mod: info.ModTime()}, 0, ""
 	}
-	path := "/" + s.cfg.DataDir + "/" + name + ".yaml"
-	return resolved{path: path, size: info.Size(), mod: info.ModTime()}, 0, ""
+	return resolved{}, http.StatusNotFound, "unknown CV: " + name
 }
 
 func (s *Server) resolveTemplate(name string) (r resolved, status int, msg string) {
@@ -142,7 +170,7 @@ func (s *Server) resolveTemplate(name string) (r resolved, status int, msg strin
 }
 
 // Content-Disposition is built with mime.FormatMediaType, never concatenation:
-// it escapes the filename, so none can break out of the header.
+// it escapes the env-supplied filename so it can't break out of the header.
 func (s *Server) writePDF(w http.ResponseWriter, filename string, attach bool, pdf []byte) {
 	disp := "inline"
 	if attach {
@@ -155,8 +183,7 @@ func (s *Server) writePDF(w http.ResponseWriter, filename string, attach bool, p
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", value)
 	if !s.cfg.AllowIndexing {
-		// An indexed CV can't be unpublished retroactively.
-		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow") // an indexed CV can't be unpublished
 	}
 	w.Header().Set("Content-Length", strconv.Itoa(len(pdf)))
 	w.WriteHeader(http.StatusOK)
@@ -173,8 +200,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// Liveness probes hit healthPath every few seconds and would bury everything
-// else, so they are served but not logged.
+// Liveness probes hit healthPath every few seconds, so they go unlogged.
 func logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == healthPath {

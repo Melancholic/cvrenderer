@@ -1,10 +1,7 @@
-// ATS-friendly CV template — a single-column, plain-text-first layout that
-// resume parsers read reliably (no sidebars, no rating bars, no multi-column
-// flow). Navy name + section rules, right-aligned dates, optional header photo.
-// Data + computed variables come from _common.typ; this file is only the layout.
-//
-// Fonts come from --font-path (Lato). See internal/typst for how the service
-// invokes this.
+// ATS-friendly CV template — single-column, plain-text-first, so resume parsers
+// read it reliably (no sidebars, rating bars or multi-column flow). Data +
+// computed variables come from _common.typ; this file is only the layout.
+// Fonts come from --font-path (Lato).
 #import "@preview/cmarker:0.1.1"
 #import "_common.typ": *
 
@@ -40,38 +37,33 @@
   cmarker.render(subst(markdown), h1-level: 3)
 }
 
-// Section heading: blue uppercase label above a full-width blue rule.
 #let section(title) = block(above: gap-section, below: u, width: 100%, breakable: false)[
   #text(size: fs-h1, weight: "bold", fill: navy, tracking: 0.5pt)[#upper(title)]
   #v(2.5pt, weak: true)
   #line(length: 100%, stroke: 0.8pt + navy)
 ]
 
-// A bold "Title, Company" on the left with a bold date range pushed to the
-// right edge of the same line. The trailing `#" "` is for parsers, not layout:
-// `h(1fr)` emits no character, so without it the text layer reads
-// "…Northwind LogisticsMar 2021 - Present".
+// The trailing `#" "` is for parsers, not layout: `h(1fr)` emits no character,
+// so without it the text layer reads "…Northwind LogisticsMar 2021 - Present".
 #let entry-head(titleText, dateText, top: gap-entry) = block(above: top, below: 0em)[
   #text(size: fs-h2, weight: "bold")[#titleText#" "]
   #h(1fr)
   #text(size: fs-h2, weight: "bold")[#dateText]
 ]
 
-// "start to end" (either side may be missing).
 #let date-range(s, e) = if s != none and e != none [#s - #e] else if s != none [#s] else if e != none [#e] else []
 
-// Keep an entry on one page so no heading or lone trailing bullet is stranded
-// by a page break. The measure is a guard: `breakable: false` on a block taller
-// than the text area overflows off the page rather than wrapping, so oversized
-// entries stay breakable.
+// Keep an entry on one page so no heading or lone trailing bullet is stranded.
+// The measure is a guard: `breakable: false` on a block taller than the text
+// area overflows the page rather than wrapping, so oversized entries stay
+// breakable.
 #let keep-together(body) = layout(size => {
   let h = measure(block(width: size.width, body)).height
   block(breakable: h > 0.5 * size.height, body)
 })
 
-// "https://www.linkedin.com/in/x/" -> "linkedin.com/in/x". The header shows the
-// address, not the `label`, so a parser that ignores link annotations still
-// reads it from the text layer.
+// "https://www.linkedin.com/in/x/" -> "linkedin.com/in/x". The header prints the
+// address so a parser that ignores link annotations still reads it.
 #let short-url(u) = {
   let s = str(u)
   if s.starts-with("https://") { s = s.slice(8) } else if s.starts-with("http://") { s = s.slice(7) }
@@ -93,9 +85,7 @@
 #set text(font: "Lato", size: fs-regular, fill: ink)
 #set par(leading: 0.4em, justify: false)
 
-// ===========================================================================
-// HEADER
-// ===========================================================================
+// ---- header ----------------------------------------------------------------
 #let header-left = {
   block(below: 6pt)[#text(size: fs-name, weight: "bold", fill: navy)[#upper(field(data, "name", default: ""))]]
   let title = field(data, "title")
@@ -117,9 +107,8 @@
   if field(data, "birth_date") != none { pd.push(str(field(data, "birth_date"))) }
   if field(data, "birth_place") != none { pd.push(str(field(data, "birth_place"))) }
 
-  // One row per link: bold label, then the address. The label's trailing `#" "`
-  // is the `entry-head` fix again — grid cells are separate text runs, so
-  // without it the text layer reads "LinkedInlinkedin.com/in/…".
+  // The label's trailing `#" "` is the `entry-head` fix again — grid cells are
+  // separate text runs, so without it the text reads "LinkedInlinkedin.com/…".
   let profiles = ()
   for l in field(data, "links", default: ()) {
     let url = field(l, "url")
@@ -159,9 +148,7 @@
 #v(6pt)
 #line(length: 100%, stroke: 1pt + navy)
 
-// ===========================================================================
-// SECTIONS
-// ===========================================================================
+// ---- sections ---------------------------------------------------------------
 
 #let summary = field(data, "summary")
 #if summary != none {
@@ -169,9 +156,8 @@
   par(justify: true)[#subst(summary)]
 }
 
-// Bold category + comma-joined keywords. The heading stays the canonical
-// "Technical Skills" — parsers match headings against a dictionary of known
-// names, and embellishments ("& keywords") miss.
+// The heading stays the canonical "Technical Skills": parsers match headings
+// against a dictionary of known names, and embellishments ("& keywords") miss.
 #let techskills = field(data, "technical_skills", default: ())
 #if techskills.len() > 0 {
   section("Technical Skills")

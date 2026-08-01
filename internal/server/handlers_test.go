@@ -72,8 +72,8 @@ func TestHealthIsNotLogged(t *testing.T) {
 		t.Errorf("liveness probe was logged: %s", buf.String())
 	}
 
-	srv.Routes().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cv/nope/none.pdf", nil))
-	if !strings.Contains(buf.String(), "/cv/nope/none.pdf") {
+	srv.Routes().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cv/none.pdf", nil))
+	if !strings.Contains(buf.String(), "/cv/none.pdf") {
 		t.Errorf("ordinary requests must still be logged, got: %q", buf.String())
 	}
 }
@@ -83,7 +83,7 @@ func TestNamedCVReturnsPDF(t *testing.T) {
 	for _, tmpl := range []string{"helsinki", "primeats"} {
 		t.Run(tmpl, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/"+tmpl+"/cv-example.pdf", nil))
+			srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf?template="+tmpl, nil))
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200 (body: %s)", rr.Code, rr.Body.String())
 			}
@@ -97,8 +97,108 @@ func TestNamedCVReturnsPDF(t *testing.T) {
 	}
 }
 
+func TestDefaultCVRoute(t *testing.T) {
+	srv := newTestServer(t)
+	srv.cfg.DefaultCV = "cv-example" // the repo ships no data/cv-default.yml
+
+	rr := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv.pdf", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rr.Code, rr.Body.String())
+	}
+	if !strings.HasPrefix(rr.Body.String(), "%PDF-") {
+		t.Error("body is not a PDF")
+	}
+	if disp := rr.Header().Get("Content-Disposition"); !strings.Contains(disp, srv.cfg.OutFilePrefix) {
+		t.Errorf("Content-Disposition = %q, want a %s… filename", disp, srv.cfg.OutFilePrefix)
+	}
+
+	// ?template= works on the default route too.
+	rr2 := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rr2, httptest.NewRequest(http.MethodGet, "/cv.pdf?template=primeats", nil))
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("primeats status = %d, want 200 (body: %s)", rr2.Code, rr2.Body.String())
+	}
+	if rr2.Body.String() == rr.Body.String() {
+		t.Error("?template=primeats returned the default template's bytes")
+	}
+}
+
+// An absent or empty ?template= means DEFAULT_TEMPLATE, not an error.
+func TestTemplateDefaults(t *testing.T) {
+	srv := newTestServer(t)
+	body := func(query string) string {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf"+query, nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d for %q, want 200 (body: %s)", rr.Code, query, rr.Body.String())
+		}
+		return rr.Body.String()
+	}
+	want := body("?template=" + srv.cfg.DefaultTemplate)
+	for _, query := range []string{"", "?template=", "?download=0"} {
+		if body(query) != want {
+			t.Errorf("%q did not render DEFAULT_TEMPLATE (%s)", query, srv.cfg.DefaultTemplate)
+		}
+	}
+}
+
+// Both spellings are served, under the same extensionless URL.
+func TestNamedCVAcceptsYmlExtension(t *testing.T) {
+	srv := newTestServer(t)
+	name := "zz-yml-" + strconv.Itoa(os.Getpid())
+	src := filepath.Join(srv.cfg.Root, srv.cfg.DataDir, "cv-example.yaml")
+	body, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(srv.cfg.Root, srv.cfg.DataDir, name+".yml")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(path) })
+
+	rr := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/"+name+".pdf", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rr.Code, rr.Body.String())
+	}
+	if !strings.HasPrefix(rr.Body.String(), "%PDF-") {
+		t.Error("body is not a PDF")
+	}
+	if disp := rr.Header().Get("Content-Disposition"); strings.Contains(disp, name) {
+		t.Errorf("Content-Disposition = %q leaks the CV filename", disp)
+	}
+}
+
+// A name spelled both ways is ambiguous; .yaml wins so the choice is stable.
+func TestResolveCVPrefersYamlOverYml(t *testing.T) {
+	cfg := config.Load()
+	cfg.Root = repoRoot(t) // no typst needed: resolveCV only stats
+	srv := New(cfg)
+	name := "zz-both-" + strconv.Itoa(os.Getpid())
+	for _, ext := range []string{".yaml", ".yml"} {
+		p := filepath.Join(cfg.Root, cfg.DataDir, name+ext)
+		if err := os.WriteFile(p, []byte("name: Ambiguous\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Remove(p) })
+	}
+
+	got, status, msg := srv.resolveCV(name)
+	if status != 0 {
+		t.Fatalf("resolveCV = %d %q, want success", status, msg)
+	}
+	if want := "/" + cfg.DataDir + "/" + name + ".yaml"; got.path != want {
+		t.Errorf("path = %q, want %q", got.path, want)
+	}
+}
+
 func TestCVDisposition(t *testing.T) {
 	srv := newTestServer(t)
+	srv.now = func() time.Time { return time.Date(2026, 8, 1, 18, 41, 9, 0, time.UTC) }
+	const wantFilename = "resume-202608011841.pdf"
 	cases := []struct {
 		name  string
 		query string
@@ -115,7 +215,7 @@ func TestCVDisposition(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/cv/helsinki/cv-example.pdf"+c.query, nil)
+			req := httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf"+c.query, nil)
 			srv.Routes().ServeHTTP(rr, req)
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200 (body: %s)", rr.Code, rr.Body.String())
@@ -128,10 +228,41 @@ func TestCVDisposition(t *testing.T) {
 			if disp != c.want {
 				t.Errorf("disposition = %q, want %q (header: %q)", disp, c.want, got)
 			}
-			if params["filename"] != "cv-example.pdf" {
-				t.Errorf("filename = %q, want cv-example.pdf", params["filename"])
+			if params["filename"] != wantFilename {
+				t.Errorf("filename = %q, want %q", params["filename"], wantFilename)
 			}
 		})
+	}
+}
+
+// A prefix is operator config, but still must not reach the header raw.
+func TestOutFilePrefix(t *testing.T) {
+	srv := newTestServer(t)
+	srv.now = func() time.Time { return time.Date(2026, 8, 1, 18, 41, 0, 0, time.UTC) }
+
+	srv.cfg.OutFilePrefix = "John_Smith-"
+	rr := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf?download", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rr.Code, rr.Body.String())
+	}
+	_, params, err := mime.ParseMediaType(rr.Header().Get("Content-Disposition"))
+	if err != nil {
+		t.Fatalf("unparseable Content-Disposition: %v", err)
+	}
+	if want := "John_Smith-202608011841.pdf"; params["filename"] != want {
+		t.Errorf("filename = %q, want %q", params["filename"], want)
+	}
+
+	// A prefix carrying CRLF must be escaped, never split into a second header.
+	srv.cfg.OutFilePrefix = "evil\r\nX-Injected: 1-"
+	rr = httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf", nil))
+	if got := rr.Header().Get("X-Injected"); got != "" {
+		t.Errorf("prefix injected a header: X-Injected = %q", got)
+	}
+	if disp := rr.Header().Get("Content-Disposition"); strings.ContainsAny(disp, "\r\n") {
+		t.Errorf("Content-Disposition carries a raw newline: %q", disp)
 	}
 }
 
@@ -142,11 +273,15 @@ func TestCVRouteErrors(t *testing.T) {
 		path string
 		want int
 	}{
-		{"missing .pdf suffix", "/cv/helsinki/cv-example", http.StatusNotFound},
-		{"path traversal in name", "/cv/helsinki/..%2f..%2fetc%2fpasswd.pdf", http.StatusBadRequest},
-		{"unknown cv", "/cv/helsinki/does-not-exist.pdf", http.StatusNotFound},
-		{"unknown template", "/cv/nope/cv-example.pdf", http.StatusNotFound},
-		{"invalid template", "/cv/..%2fsecret/cv-example.pdf", http.StatusBadRequest},
+		{"missing .pdf suffix", "/cv/cv-example", http.StatusNotFound},
+		{"old template-in-path scheme", "/cv/helsinki/cv-example.pdf", http.StatusNotFound},
+		{"path traversal in name", "/cv/..%2f..%2fetc%2fpasswd.pdf", http.StatusBadRequest},
+		{"unknown cv", "/cv/does-not-exist.pdf", http.StatusNotFound},
+		{"unknown template", "/cv/cv-example.pdf?template=nope", http.StatusNotFound},
+		{"invalid template", "/cv/cv-example.pdf?template=..%2fsecret", http.StatusBadRequest},
+		{"shared partial is not a template", "/cv/cv-example.pdf?template=_common", http.StatusBadRequest},
+		// DEFAULT_CV is cv-default, and this repo ships no data/cv-default.yml.
+		{"default CV without a file", "/cv.pdf", http.StatusNotFound},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -161,7 +296,7 @@ func TestCVRouteErrors(t *testing.T) {
 
 func TestCVCaching(t *testing.T) {
 	srv := newTestServer(t)
-	const path = "/cv/helsinki/cv-example.pdf"
+	const path = "/cv/cv-example.pdf"
 	// Pin the clock to midday so the midnight-capped max-age is deterministic.
 	noon := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 	srv.now = func() time.Time { return noon }
@@ -240,12 +375,12 @@ func TestCVCacheRollsOverAtMidnight(t *testing.T) {
 	srv.now = func() time.Time { return day }
 
 	rr := httptest.NewRecorder()
-	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/helsinki/cv-example.pdf", nil))
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf", nil))
 	before := rr.Header().Get("ETag")
 
 	day = day.Add(2 * time.Minute) // 00:01 the next day
 	rr = httptest.NewRecorder()
-	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/helsinki/cv-example.pdf", nil))
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf", nil))
 	if after := rr.Header().Get("ETag"); after == before {
 		t.Error("ETag survived a day boundary; date-derived fields would go stale")
 	}
@@ -258,7 +393,7 @@ func TestCVCacheDisabled(t *testing.T) {
 	srv := New(cfg)
 
 	rr := httptest.NewRecorder()
-	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/helsinki/cv-example.pdf", nil))
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf", nil))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
@@ -272,7 +407,7 @@ func TestCVCacheDisabled(t *testing.T) {
 
 func TestCachedResponseSkipsRenderSlot(t *testing.T) {
 	srv := newTestServer(t)
-	const path = "/cv/helsinki/cv-example.pdf"
+	const path = "/cv/cv-example.pdf"
 
 	rr := httptest.NewRecorder()
 	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
@@ -311,7 +446,7 @@ func TestRenderFailureIsOpaque(t *testing.T) {
 	t.Cleanup(func() { os.Remove(path) })
 
 	rr := httptest.NewRecorder()
-	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/helsinki/"+name+".pdf", nil))
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/"+name+".pdf", nil))
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500 (body: %s)", rr.Code, rr.Body.String())
 	}
@@ -326,7 +461,7 @@ func TestRenderFailureIsOpaque(t *testing.T) {
 func TestNoIndexHeader(t *testing.T) {
 	srv := newTestServer(t)
 	rr := httptest.NewRecorder()
-	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/helsinki/cv-example.pdf", nil))
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf", nil))
 	if got := rr.Header().Get("X-Robots-Tag"); got != "noindex, nofollow" {
 		t.Errorf("X-Robots-Tag = %q, want %q", got, "noindex, nofollow")
 	}
@@ -334,7 +469,7 @@ func TestNoIndexHeader(t *testing.T) {
 	cfg := srv.cfg
 	cfg.AllowIndexing = true
 	rr = httptest.NewRecorder()
-	New(cfg).Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/helsinki/cv-example.pdf", nil))
+	New(cfg).Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf", nil))
 	if got := rr.Header().Get("X-Robots-Tag"); got != "" {
 		t.Errorf("X-Robots-Tag = %q with ALLOW_INDEXING, want it absent", got)
 	}
@@ -371,7 +506,7 @@ func TestBusyReturns503(t *testing.T) {
 	srv.renderSlots <- struct{}{} // occupy the only slot
 
 	rr := httptest.NewRecorder()
-	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/helsinki/cv-example.pdf", nil))
+	srv.Routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cv/cv-example.pdf", nil))
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rr.Code)
 	}

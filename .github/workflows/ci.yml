@@ -75,7 +75,8 @@ jobs:
       - name: Smoke test image
         run: |
           set -euo pipefail
-          docker run -d --name cvrenderer-ci -p 18080:8080 cvrenderer:ci
+          # DEFAULT_CV points at the sample: the image ships no cv-default.yml.
+          docker run -d --name cvrenderer-ci -p 18080:8080 -e DEFAULT_CV=cv-example cvrenderer:ci
           trap 'docker logs cvrenderer-ci || true; docker rm -f cvrenderer-ci >/dev/null 2>&1 || true' EXIT
 
           for _ in $(seq 30); do
@@ -86,7 +87,11 @@ jobs:
 
           for template in helsinki primeats; do
             curl -fsS -o "/tmp/${template}.pdf" \
-              "http://127.0.0.1:18080/cv/${template}/cv-example.pdf"
+              "http://127.0.0.1:18080/cv/cv-example.pdf?template=${template}"
             head -c 4 "/tmp/${template}.pdf" | grep -q '%PDF' \
               || { echo "${template}: response is not a PDF" >&2; exit 1; }
           done
+
+          curl -fsS -o /tmp/default.pdf "http://127.0.0.1:18080/cv.pdf"
+          head -c 4 /tmp/default.pdf | grep -q '%PDF' \
+            || { echo "/cv.pdf: response is not a PDF" >&2; exit 1; }
